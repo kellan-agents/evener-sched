@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# sched — register, list, and remove scheduled evener runs on this sprite.
+#
+#   sched add --in "4 hours"  --prompt "..."  [--name N] [--model M] [--max-rounds R]
+#   sched add --at "tomorrow 09:00" --prompt-file F [...]
+#   sched list
+#   sched rm <id>
+#
+# Adding a job writes its spec to the local queue (read by the gate service)
+# and pushes a wake entry to the GitHub repo configured by EVENER_SCHED_GH_CLONE
+# (default: ~/projects/sprite-sched), whose Actions workflow pings the
+# sprite's public URL when the job comes due — the only thing that can wake a
+# paused sprite. The machine must be reachable at due time; if GitHub cannot
+# reach it the wake is retried on later ticks. A job that comes due while the
+# machine is awake runs without needing the wake at all.
+#
+# Machine-specific values come from the optional shared config file
+# (~/.config/evener-sprite/config, overridable via EVENER_SPRITE_CONFIG);
+# per-tool EVENER_* env vars override the config file, and neutral built-in
+# defaults sit under both. See config.example.
+set -u
+
+CONFIG_FILE="${EVENER_SPRITE_CONFIG:-$HOME/.config/evener-sprite/config}"
+# shellcheck source=/dev/null
+[ -f "$CONFIG_FILE" ] && . "$CONFIG_FILE"
+
+PATH="$HOME/.local/bin:$PATH"
+STATE="${EVENER_SCHED_STATE:-$HOME/.local/state/evener-sched}"
+QUEUE="$STATE/queue"
+RUNDATA="$STATE/state"
+GH_CLONE="${EVENER_SCHED_GH_CLONE:-$HOME/projects/sprite-sched}"
+DEFAULT_MODEL="${EVENER_SCHED_MODEL:-${DEFAULT_MODEL:-}}"
+DEFAULT_ROUNDS=40
+
+mkdir -p "$QUEUE" "$RUNDATA"
+
+die() { echo "sched: $*" >&2; exit 1; }
+
+# --- due.json in the GitHub clone --------------------------------------------
+gh_sync() {
+  # $1 = add <id> <due_epoch> <due_iso> | rm <id>
+  # Never fatal: a failed sync leaves the job in the local queue (the gate
+  # still runs it while the machine is up; only the external wake is missing).
+  local op=$1 id=${2:-} due_epoch=${3:-} due_iso=${4:-}
+  [ -d "$GH_CLONE/.git" ] || { echo "sched: no clone at $GH_CLONE; clone the sprite-sched repo first" >&2; return 1; }
+  ( cd "$GH_CLONE" \
+    && git pull --rebase --quiet \
+    && if [ "$op" = add ]; then
+         jq --arg id "$id" --argjson e "$due_epoch" --arg iso "$due_iso" \
+            '.jobs += [{"id":$id,"due_epoch":$e,"due_iso":$iso,"fired":false}]' due.json > due.json.tmp
+       else
+         jq --arg id "$id" 'del(.jobs[] | select(.id == $id))' due.json > due.json.tmp
+       fi \
+    && mv due.json.tmp due.json \
+    && git add due.json \
+    && git commit --quiet -m "sched: $op $id" \
+    && git push --quiet ) || { echo "sched: could not sync $GH_CLONE (job stays in the local queue; the wake trigger may be missing)" >&2; return 1; }
+}
+
+cmd_add() {
+  local in="" at="" name="" model="$DEFAULT_MODEL" rounds="$DEFAULT_ROUNDS" prompt="" prompt_file="" resume_session=""
+  local due_epoch due_iso id model_desc
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --in) in="$2"; shift 2 ;;
+      --at) at="$2"; shift 2 ;;
+      --name) name="$2"; shift 2 ;;
+      --model) model="$2"; shift 2 ;;
+      --max-rounds) rounds="$2"; shift 2 ;;
+      --prompt) prompt="$2"; shift 2 ;;
+      --prompt-file) prompt_file="$2"; shift 2 ;;
+      --resume-session) resume_session="$2"; shift 2 ;;
+      *) die "unknown option: $1" ;;
+    esac
+  done
+  [ -n "$in" ] && [ -n "$at" ] && die "use --in or --at, not both"
+  [ -z "$in" ] && [ -z "$at" ] && die "need --in <duration> or --at <time>"
+  [ -n "$prompt_file" ] && [ -n "$prompt" ] && die "use --prompt or --prompt-file, not both"
+  [ -z "$prompt" ] && [ -z "$prompt_file" ] && die "need --prompt or --prompt-file"
+
+  if [ -n "$in" ]; then
+    due_epoch=$(date -d "$in" +%s) || die "bad duration: $in (examples: '4 hours', '90 minutes', 'tomorrow 09:00')"
+  else
+    due_epoch=$(date -d "$at" +%s) || die "bad time: $at"
+  fi
+  due_iso=$(date -u -d "@$due_epoch" +%FT%TZ)
+
+  id="j$(date +%s)x$RANDOM$RANDOM"
+  [ -n "$prompt_file" ] && cp "$prompt_file" "$QUEUE/$id.prompt" \
+                     || printf '%s\n' "$prompt" >"$QUEUE/$id.prompt"
+  [ -n "$name" ] || name="job-$id"
+  if [ -n "$resume_session" ]; then
+    evener doctor locate "$resume_session" >/dev/null 2>&1 \
+      || die "--resume-session: no session $resume_session under the state root"
+  fi
+  # An empty model means the spec carries none and the gate lets evener use
+  # its own configured default.
+  jq -n --arg id "$id" --arg name "$name" --argjson due "$due_epoch" \
+        --arg iso "$due_iso" --arg model "$model" --argjson mr "$rounds" \
+        --arg rs "$resume_session" \
+    '{id:$id, name:$name, due_epoch:$due, due_iso:$iso,
+      model:(if $model == "" then null else $model end), max_rounds:$mr,
+      resume_session:(if $rs == "" then null else $rs end),
+      created_iso:"'"$(date -u +%FT%TZ)"'"}' >"$QUEUE/$id.json"
+
+  if [ -n "$model" ]; then model_desc="model $model"; else model_desc="no model override"; fi
+  gh_sync add "$id" "$due_epoch" "$due_iso" \
+    && echo "scheduled: $id '$name' due $due_iso ($model_desc, max $rounds rounds)" \
+    || echo "scheduled LOCALLY ONLY: $id '$name' due $due_iso — the wake trigger push failed"
+}
+
+cmd_list() {
+  printf '%-24s %-20s %-12s %-10s %s\n' ID DUE NAME STATE FIRED
+  local spec id due name state fired
+  for spec in "$QUEUE"/*.json; do
+    [ -f "$spec" ] || continue
+    id=$(jq -r '.id' "$spec")
+    due=$(jq -r '.due_iso' "$spec")
+    name=$(jq -r '.name' "$spec")
+    state=queued
+    [ -f "$RUNDATA/$id.pid" ] && state=running
+    [ -f "$RUNDATA/$id.done" ] && state=done
+    [ -f "$RUNDATA/$id.failed" ] && state=failed
+    [ -f "$RUNDATA/$id.waiting" ] && state=waiting
+    rs=$(jq -r '.resume_session // ""' "$spec")
+    [ -n "$rs" ] && name="$name →${rs:0:12}"
+    fired=no
+    if [ -d "$GH_CLONE/.git" ]; then
+      f=$(git -C "$GH_CLONE" show HEAD:due.json 2>/dev/null | jq -r --arg id "$id" '[.jobs[] | select(.id == $id and .fired)] | length')
+      [ "$f" = "1" ] && fired=yes
+    fi
+    printf '%-24s %-20s %-12s %-10s %s\n' "$id" "$due" "$name" "$state" "$fired"
+  done
+}
+
+cmd_rm() {
+  local id=${1:-}
+  [ -n "$id" ] || die "rm needs a job id"
+  [ -f "$QUEUE/$id.json" ] || die "no such job: $id"
+  rm -f "$QUEUE/$id.json" "$QUEUE/$id.prompt" "$RUNDATA/$id.pid" \
+        "$RUNDATA/$id.started" "$RUNDATA/$id.done" "$RUNDATA/$id.failed" \
+        "$RUNDATA/$id.attempts" "$RUNDATA/$id.waiting"
+  gh_sync rm "$id" && echo "removed: $id" || echo "removed locally: $id (wake entry may still fire once)"
+}
+
+case "${1:-}" in
+  add) shift; cmd_add "$@" ;;
+  list) shift; cmd_list "$@" ;;
+  rm) shift; cmd_rm "$@" ;;
+  *) sed -n '2,20p' "$0"; exit 1 ;;
+esac

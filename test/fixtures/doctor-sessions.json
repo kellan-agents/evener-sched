@@ -1,0 +1,73 @@
+{
+  "unreadable": [],
+  "sessions": [
+    {
+      "session_id": "test-sid-1001",
+      "transcript_ref": "proj:test-bucket-0001:test-sid-1001",
+      "bucket": "test-bucket-0001",
+      "started_at": "2026-11-23T14:59:14.509833725Z",
+      "last_activity": "2026-11-23T15:02:04.415412875Z",
+      "models": [
+        "glm-5.3"
+      ],
+      "turn_count": 9,
+      "transcript_bytes": 209485,
+      "is_subagent": true,
+      "parent_session_id": "test-parent-0001",
+      "delegate_count": 0,
+      "observer_count": 0,
+      "outcome": "none"
+    },
+    {
+      "session_id": "test-sid-1002",
+      "transcript_ref": "proj:test-bucket-0001:test-sid-1002",
+      "bucket": "test-bucket-0001",
+      "started_at": "2026-11-23T14:27:11.293685148Z",
+      "last_activity": "2026-11-23T15:02:00.671292717Z",
+      "models": [
+        "glm-5.3"
+      ],
+      "turn_count": 31,
+      "transcript_bytes": 340505,
+      "is_subagent": false,
+      "parent_session_id": null,
+      "delegate_count": 0,
+      "observer_count": 0,
+      "outcome": "none"
+    },
+    {
+      "session_id": "test-sid-1003",
+      "transcript_ref": "proj:test-bucket-0001:test-sid-1003",
+      "bucket": "test-bucket-0001",
+      "started_at": "2026-11-23T00:40:06.209697326Z",
+      "last_activity": "2026-11-23T14:59:26.123692596Z",
+      "models": [
+        "glm-5.3"
+      ],
+      "turn_count": 65,
+      "transcript_bytes": 2272986,
+      "is_subagent": false,
+      "parent_session_id": null,
+      "delegate_count": 2,
+      "observer_count": 0,
+      "outcome": "end_turn=true"
+    },
+    {
+      "session_id": "test-sid-1004",
+      "transcript_ref": "proj:test-bucket-0001:test-sid-1004",
+      "bucket": "test-bucket-0001",
+      "started_at": "2026-11-23T12:34:14.686568505Z",
+      "last_activity": "2026-11-23T12:36:58.629826601Z",
+      "models": [
+        "glm-5.3"
+      ],
+      "turn_count": 5,
+      "transcript_bytes": 109757,
+      "is_subagent": false,
+      "parent_session_id": null,
+      "delegate_count": 0,
+      "observer_count": 0,
+      "outcome": "end_turn=true"
+    }
+  ]
+}

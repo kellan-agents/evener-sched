@@ -1,0 +1,33 @@
+# evener-sprite shared config example — copy to ~/.config/evener-sprite/config
+# (or point EVENER_SPRITE_CONFIG at it) and uncomment the keys you need.
+# Precedence: per-tool EVENER_* env var > this file > neutral built-in default.
+# Every value below is a placeholder; replace with your own.
+
+# Wake URL for your sprite (also held in the SPRITE_URL Actions secret if you
+# use sprite-sched's wake workflows).
+# SPRITE_URL=https://your-sprite.example.invalid
+
+# evener binary path (default: `evener` from PATH).
+# EVENER_BIN=/usr/local/bin/evener
+
+# Provider env file, sourced before launches (default: unset = each tool warns
+# at launch time and proceeds).
+# PROVIDER_ENV="$HOME/.config/evener/your-provider.env"
+
+# Default model, provider/model form; empty = let evener use its own default.
+# DEFAULT_MODEL=your-provider/your-model
+
+# Per-tool override: model used by evener-sched's launches.
+# EVENER_SCHED_MODEL=your-provider/your-model
+
+# Where scheduled jobs run (default: $HOME).
+# WORKDIR="$HOME/projects"
+
+# State bucket for auto-resume (unset = auto-resume disabled loudly).
+# RESUME_BUCKET=your-bucket-id
+
+# keepawake legacy-session cutoff ISO time (empty = source disabled).
+# LEGACY_CUTOFF=2026-01-01T00:00:00Z
+
+# nice level for spawned work (default: 10).
+# NICE=10

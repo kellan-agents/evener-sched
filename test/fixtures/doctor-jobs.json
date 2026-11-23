@@ -1,0 +1,6 @@
+{
+  "session_id": "test-sid-0001",
+  "jobs_path": "/home/user/.local/state/evener/projects/test-bucket-0001/sessions/test-sid-0001/jobs.jsonl",
+  "delegates_path": "/home/user/.local/state/evener/projects/test-bucket-0001/sessions/test-sid-0001/delegates.jsonl",
+  "jobs": []
+}
