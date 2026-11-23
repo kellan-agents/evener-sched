@@ -59,7 +59,7 @@ touch "$LOG"
 # The one-shot sessions need the provider key, exactly like the hub service.
 # A missing provider env is never fatal here; launches warn loudly instead.
 PROVIDER_ENV="${EVENER_SCHED_PROVIDER_ENV:-${PROVIDER_ENV:-}}"
-# shellcheck disable=SC1091
+# shellcheck source=/dev/null
 [ -n "$PROVIDER_ENV" ] && . "$PROVIDER_ENV"
 
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$LOG"; }
@@ -136,7 +136,7 @@ start_due_jobs() {
     # once) until it is gone; the steering lands on the next tick after that.
     rs=$(jq -r '.resume_session // ""' "$spec")
     if [ -n "$rs" ]; then
-      if daemon_live "$rs" ]; then
+      if daemon_live "$rs"; then
         if [ ! -f "$RUNDATA/$id.waiting" ]; then
           log "job $id ($name): target session $rs has a live daemon; waiting for it to go idle/dead (cancel with sched rm $id)"
           touch "$RUNDATA/$id.waiting"
